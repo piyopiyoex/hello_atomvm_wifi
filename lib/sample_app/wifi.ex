@@ -8,48 +8,39 @@ defmodule SampleApp.WiFi do
   @dhcp_hostname "piyopiyo"
   @sntp_host "jp.pool.ntp.org"
 
-  def start do
-    wifi_ssid = SampleApp.NVS.get_binary(:wifi_ssid)
-    wifi_passphrase = SampleApp.NVS.get_binary(:wifi_passphrase)
+  def start_link(_opts \\ []) do
+    case fetch_wifi_credentials() do
+      {:ok, {wifi_ssid, wifi_passphrase}} ->
+        :network.start_link(
+          sta:
+            [
+              dhcp_hostname: @dhcp_hostname,
+              connected: &handle_sta_connected/0,
+              disconnected: &handle_sta_disconnected/0,
+              got_ip: &handle_sta_got_ip/1,
+              ssid: wifi_ssid
+            ]
+            |> maybe_put(:psk, wifi_passphrase),
+          sntp: [
+            host: @sntp_host,
+            synchronized: &handle_sntp_synchronized/1
+          ]
+        )
 
-    if is_nil(wifi_ssid) do
-      IO.puts("wifi: missing SSID in NVS (key: wifi_ssid). Provision first.")
-    else
-      spawn(fn -> start_network(wifi_ssid, wifi_passphrase) end)
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp start_network(wifi_ssid, wifi_passphrase) do
-    sta_config =
-      [
-        dhcp_hostname: @dhcp_hostname,
-        connected: &handle_sta_connected/0,
-        disconnected: &handle_sta_disconnected/0,
-        got_ip: &handle_sta_got_ip/1,
-        ssid: wifi_ssid
-      ]
-      |> maybe_put(:psk, wifi_passphrase)
+  defp fetch_wifi_credentials do
+    wifi_ssid = SampleApp.NVS.get_binary(:wifi_ssid)
 
-    sntp_config = [
-      host: @sntp_host,
-      synchronized: &handle_sntp_synchronized/1
-    ]
-
-    network_config = [
-      sta: sta_config,
-      sntp: sntp_config
-    ]
-
-    result =
-      try do
-        :network.start(network_config)
-      catch
-        kind, reason -> {:error, {kind, reason}}
-      end
-
-    case result do
-      {:ok, _pid} -> IO.puts("wifi: started")
-      {:error, reason} -> IO.puts("wifi: start failed #{inspect(reason)}")
+    if is_nil(wifi_ssid) do
+      IO.puts("wifi: missing SSID in NVS (key: wifi_ssid). Provision first.")
+      {:error, {:missing_nvs_key, :wifi_ssid}}
+    else
+      wifi_passphrase = SampleApp.NVS.get_binary(:wifi_passphrase)
+      {:ok, {wifi_ssid, wifi_passphrase}}
     end
   end
 

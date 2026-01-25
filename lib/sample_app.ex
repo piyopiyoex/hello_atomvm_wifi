@@ -5,8 +5,8 @@ defmodule SampleApp do
 
   def start do
     SampleApp.Provision.maybe_provision()
-    SampleApp.WiFi.start()
-    {:ok, _pid} = SampleApp.ClockLogger.start_link()
+    {:ok, _} = SampleApp.WiFi.start_link()
+    {:ok, _} = SampleApp.ClockLogger.start_link()
 
     Process.sleep(:infinity)
   end
